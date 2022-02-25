@@ -3,6 +3,8 @@ import java.util.Vector;
 
 import kuusisto.tinysound.*;
 
+//Uses TinySound library
+
 public class AudioHandler {
 	private static Vector<Sound> soundList = new Vector<Sound>();
 	private static double volume = 0.5;
@@ -12,6 +14,11 @@ public class AudioHandler {
 
 		for (ClickSound clickSound : ClickSound.values()) {
 			try {
+				if (clickSound.getFileName() == "") {
+					soundList.add(null);
+					continue;
+				}
+				
 				URL url = AudioHandler.class.getClassLoader().getResource(clickSound.getFileName());
 				Sound sound = TinySound.loadSound(url);
 				soundList.add(sound);
@@ -23,15 +30,13 @@ public class AudioHandler {
 	}
 
 	public static void play(int id) {
+		if (soundList.elementAt(id) == null) {
+			return;
+		}
 		soundList.elementAt(id).play(volume);
 	}
 
 	public static void setVolume(double vol) {
 		volume = vol;
-	}
-	
-	//TODO: invoke this method when metronome window is closed
-	public static void close() {
-		TinySound.shutdown();
 	}
 }

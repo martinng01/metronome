@@ -3,7 +3,8 @@ public enum ClickSound
 	CLICKHIGH("ClickHigh.wav", 0),
 	CLICKLOW("ClickLow.wav", 1),
 	SNARE("Snare.wav", 2),
-	KICKDRUM("KickDrum.wav", 3);
+	KICKDRUM("KickDrum.wav", 3),
+	SILENCE("", 4);
 
 	private String fileName;
 	private int id;

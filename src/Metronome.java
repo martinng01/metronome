@@ -20,6 +20,8 @@ import java.util.List;
 import java.awt.event.ActionEvent;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
+import java.awt.Dimension;
 
 import javax.swing.JPanel;
 import javax.swing.JToggleButton;
@@ -32,11 +34,18 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import javax.swing.ImageIcon;
 import javax.swing.border.MatteBorder;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+
+/**
+ * @author martinng01
+ */
 
 public class Metronome {
 
 	private static final int MIN_BPM = 0;
 	private static final int MAX_BPM = 300;
+	private static final int EXTENDED_BPM = 800;
 	private static final int DEFAULT_BPM = 100;
 
 	private static final Color frmMetronomeColour = Color.decode("#001219");
@@ -60,19 +69,23 @@ public class Metronome {
 
 	private static JFrame frmMetronome;
 	private static MyButton bpmTap, bpmSub, bpmAdd, btnPlay, btnTimerSub, btnTimerAdd;
-	private static JToggleButton tglbtnBeatSound;
+	private static JToggleButton tglbtnBeatSound, tglbtnIndvBeats, tglbtnExtendBPM;
 	private static MySlider bpmSlider, measureSlider, volSlider;
 	private static JLabel bpmLabel, lblTimer, lblHighBeat, lblLowBeat, lblVolume, lblBeats;
-	private static JPanel beatsPanel, beatSoundPanel;
+	private static JPanel beatsPanel, extensionPanel, highLowBeatSoundPanel, indvBeatSoundPanel;
 	private static MyComboBox highBeatSelector, lowBeatSelector;
 
 	private static int bpm = DEFAULT_BPM;
+	private static int maxBPM = MAX_BPM;
 	private static int beatsPerMeasure = 4;
 	private static int beatCount = 1;
 	private static int timerValue = 0;
 	private static boolean isPlaying = false;
 	private static boolean isModifyingBeatSound = false;
+	private static boolean isIndivBeats = false;
 	private static List<JLabel> beatList = new ArrayList<JLabel>();
+	private static List<MyComboBox> beatComboBoxList = new ArrayList<MyComboBox>();
+	private static List<ClickSound> indvBeatSounds = new ArrayList<ClickSound>();
 	private static ClickSound highSound = ClickSound.CLICKHIGH;
 	private static ClickSound lowSound = ClickSound.CLICKLOW;
 	private static ScheduledFuture<?> beepHandler, timerHandler;
@@ -82,10 +95,14 @@ public class Metronome {
 	public static class MetronomeBeep implements Runnable {
 		@Override
 		public void run() {
-			if (beatCount == 1) {
-				AudioHandler.play(highSound.getID());
+			if (!isIndivBeats) {
+				if (beatCount == 1) {
+					AudioHandler.play(highSound.getID());
+				} else {
+					AudioHandler.play(lowSound.getID());
+				}
 			} else {
-				AudioHandler.play(lowSound.getID());
+				AudioHandler.play(indvBeatSounds.get(beatCount - 1).getID());
 			}
 
 			beatList.get(beatCount - 1).setIcon(onBeatIcon);
@@ -153,6 +170,10 @@ public class Metronome {
 			private final int numIterations = 30;
 			private int transparency = 255;
 
+			/**
+			 * Changes opacity of tap button per unit time, resets the memory of past taps
+			 * if button is not pressed within 2 seconds
+			 */
 			@Override
 			public void run() {
 				isCountingDown = true;
@@ -170,8 +191,6 @@ public class Metronome {
 
 					if (transparency < 0) isCountingDown = false;
 				}
-
-				// If user does not press tapTempo button again within 2 seconds
 				reset();
 			}
 
@@ -181,6 +200,9 @@ public class Metronome {
 
 		}
 
+		/**
+		 * Calculates and sets new BPM based on delays of previous taps
+		 */
 		public static void tap() {
 			if (isPlaying) pause();
 			if (!isCountingDown) isCountingDown = true;
@@ -252,8 +274,8 @@ public class Metronome {
 	public static void setBpm(int newBpm) {
 		if (newBpm <= MIN_BPM) {
 			bpm = MIN_BPM;
-		} else if (newBpm >= MAX_BPM) {
-			bpm = MAX_BPM;
+		} else if (newBpm >= maxBPM) {
+			bpm = maxBPM;
 		} else {
 			bpm = newBpm;
 		}
@@ -261,7 +283,14 @@ public class Metronome {
 		bpmSlider.setValue(bpm);
 	}
 
+	/**
+	 * Paints the beat circles on the screen. Adds the high/low ticks to list of
+	 * individual beat sounds
+	 */
 	public static void setNumBeats(int beats) {
+		beatsPerMeasure = beats;
+
+		indvBeatSounds.clear();
 		beatList.clear();
 		beatsPanel.removeAll();
 		beatsPanel.repaint();
@@ -270,13 +299,16 @@ public class Metronome {
 			int xPos = Math.round((500 - beats * 60) / (beats + 1)) * (i + 1) + i * 60;
 
 			beatList.add(new JLabel());
-			// beatList.get(i).setBorder(new EtchedBorder(EtchedBorder.RAISED, null, null));
 			beatList.get(i).setBounds(xPos, 30, 60, 60);
-			beatList.get(i).setFont(new Font("Tahoma", Font.PLAIN, 30));
-			beatList.get(i).setHorizontalAlignment(SwingConstants.CENTER);
 			beatList.get(i).setOpaque(false);
 			beatList.get(i).setIcon(offBeatIcon);
 			beatsPanel.add(beatList.get(i));
+
+			if (i == 0) {
+				indvBeatSounds.add(highSound);
+			} else {
+				indvBeatSounds.add(lowSound);
+			}
 		}
 	}
 
@@ -298,6 +330,9 @@ public class Metronome {
 		btnPlay.setIcon(playIcon);
 	}
 
+	/**
+	 * Schedule a metronome tick at rate of BPM
+	 */
 	public static void play() {
 		beepHandler = scheduler.scheduleAtFixedRate(new MetronomeBeep(), 0, Math.round((60.0 / bpm) * 1000), TimeUnit.MILLISECONDS);
 
@@ -323,6 +358,44 @@ public class Metronome {
 		}
 	}
 
+	/**
+	 * Adds the dropdown menus for the individual beat sounds
+	 */
+	public static void layoutBeatSounds(int numBeats) {
+		indvBeatSoundPanel.removeAll();
+		indvBeatSoundPanel.revalidate();
+		indvBeatSoundPanel.repaint();
+
+		indvBeatSoundPanel.add(Box.createVerticalGlue());
+		for (int i = 0; i < numBeats; i++) {
+			JLabel beatLabel = new JLabel(Integer.toString(i + 1));
+			beatLabel.setForeground(textColour);
+			beatLabel.setMaximumSize(new Dimension(180, 14));
+			beatLabel.setPreferredSize(new Dimension(180, 14));
+
+			MyComboBox comboBox = new MyComboBox();
+			comboBox.setID(i);
+			comboBox.setMaximumSize(new Dimension(180, 20));
+			comboBox.setPreferredSize(new Dimension(180, 20));
+			comboBox.setSize(180, 20);
+			comboBox.setSelectedItem(indvBeatSounds.get(i).name());
+			comboBox.addActionListener(new ActionListener() {
+				@Override
+				public void actionPerformed(ActionEvent e) {
+					indvBeatSounds.set(comboBox.getID(), ClickSound.valueOf((String) comboBox.getSelectedItem()));
+				}
+			});
+
+			beatComboBoxList.add(comboBox);
+
+			indvBeatSoundPanel.add(beatLabel);
+			indvBeatSoundPanel.add(Box.createVerticalStrut(3));
+			indvBeatSoundPanel.add(comboBox);
+			indvBeatSoundPanel.add(Box.createVerticalGlue());
+		}
+		indvBeatSoundPanel.add(Box.createVerticalStrut(30));
+	}
+
 	private static void initialize() {
 		frmMetronome = new JFrame();
 		frmMetronome.setTitle("Metronome");
@@ -330,6 +403,7 @@ public class Metronome {
 		frmMetronome.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frmMetronome.getContentPane().setLayout(null);
 		frmMetronome.getContentPane().setBackground(frmMetronomeColour);
+		frmMetronome.setResizable(false);
 
 		measureSlider = new MySlider();
 		measureSlider.setVisible(false);
@@ -342,6 +416,13 @@ public class Metronome {
 		measureSlider.setOrientation(SwingConstants.VERTICAL);
 		measureSlider.setBounds(426, 181, 50, 200);
 		measureSlider.keepAliveOnHover();
+		measureSlider.addChangeListener(new ChangeListener() {
+			public void stateChanged(ChangeEvent arg0) {
+				if (isPlaying) pause();
+				setNumBeats(measureSlider.getValue());
+				layoutBeatSounds(beatsPerMeasure);
+			}
+		});
 
 		bpmSlider = new MySlider();
 		bpmSlider.setBounds(0, 416, 484, 45);
@@ -349,22 +430,49 @@ public class Metronome {
 		bpmSlider.setMinorTickSpacing(10);
 		bpmSlider.setMajorTickSpacing(50);
 		bpmSlider.setValue(DEFAULT_BPM);
-		bpmSlider.setMaximum(MAX_BPM);
+		bpmSlider.setMaximum(maxBPM);
+		bpmSlider.addChangeListener(new ChangeListener() {
+			public void stateChanged(ChangeEvent arg0) {
+				frmMetronome.repaint();
+				if (isPlaying) pause();
+
+				if (bpmSlider.getValue() == 0) {
+					setBpm(1);
+				} else {
+					setBpm(bpmSlider.getValue());
+				}
+			}
+		});
 
 		bpmTap = new MyButton("Tap");
 		bpmTap.setBounds(211, 371, 60, 34);
 		bpmTap.setForeground(Color.WHITE);
 		bpmTap.setFont(new Font("Tahoma", Font.BOLD, 11));
+		bpmTap.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				TapTempo.tap();
+			}
+		});
 
 		bpmSub = new MyButton();
 		bpmSub.setBounds(150, 371, 51, 34);
 		bpmSub.setFont(new Font("Tahoma", Font.PLAIN, 20));
 		bpmSub.setIcon(subtractBPMIcon);
+		bpmSub.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				setBpm(bpm - 1);
+			}
+		});
 
 		bpmAdd = new MyButton();
 		bpmAdd.setBounds(281, 371, 51, 34);
 		bpmAdd.setFont(new Font("Tahoma", Font.PLAIN, 20));
 		bpmAdd.setIcon(plusBPMIcon);
+		bpmAdd.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				setBpm(bpm + 1);
+			}
+		});
 
 		bpmLabel = new JLabel(Integer.toString(bpm));
 		bpmLabel.setBounds(142, 164, 200, 97);
@@ -376,6 +484,15 @@ public class Metronome {
 		btnPlay.setIcon(playIcon);
 		btnPlay.setFont(new Font("Tahoma", Font.BOLD, 23));
 		btnPlay.setBounds(150, 306, 182, 54);
+		btnPlay.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				if (isPlaying) {
+					pause();
+				} else {
+					play();
+				}
+			}
+		});
 
 		beatsPanel = new JPanel();
 		beatsPanel.setBounds(-10, 38, 484, 97);
@@ -389,177 +506,6 @@ public class Metronome {
 		volSlider.setMaximum(10);
 		volSlider.setBounds(370, 226, 50, 155);
 		volSlider.keepAliveOnHover();
-
-		lblTimer = new JLabel("0:00");
-		lblTimer.setHorizontalAlignment(SwingConstants.CENTER);
-		lblTimer.setFont(new Font("Tahoma", Font.BOLD, 30));
-		lblTimer.setForeground(textColour);
-		lblTimer.setBounds(11, 190, 122, 54);
-
-		btnTimerSub = new MyButton();
-		btnTimerSub.setBounds(12, 241, 51, 29);
-		btnTimerSub.setIcon(subtractTimerIcon);
-
-		btnTimerAdd = new MyButton();
-		btnTimerAdd.setBounds(81, 241, 51, 29);
-		btnTimerAdd.setIcon(plusTimerIcon);
-
-		lblVolume = new JLabel();
-		lblVolume.setBounds(379, 377, 32, 32);
-		lblVolume.setIcon(softVolIcon);
-
-		lblBeats = new JLabel();
-		lblBeats.setBounds(428, 377, 32, 32);
-		lblBeats.setIcon(beatsIcon);
-
-		// Beat Sound Modifier
-
-		tglbtnBeatSound = new JToggleButton();
-		tglbtnBeatSound.setBorderPainted(false);
-		tglbtnBeatSound.setFont(new Font("Tahoma", Font.PLAIN, 12));
-		tglbtnBeatSound.setBounds(7, 10, 40, 34);
-		tglbtnBeatSound.setBorder(new MatteBorder(1, 1, 1, 1, (Color) Color.WHITE));
-		tglbtnBeatSound.setOpaque(false);
-		tglbtnBeatSound.setIcon(menuIcon);
-		tglbtnBeatSound.setFocusable(false);
-		tglbtnBeatSound.setContentAreaFilled(false);
-
-		beatSoundPanel = new JPanel();
-		beatSoundPanel.setBorder(new MatteBorder(0, 2, 0, 0, (Color) new Color(255, 255, 255)));
-		beatSoundPanel.setBackground(frmMetronomeColour);
-		beatSoundPanel.setBounds(485, 0, 200, 461);
-		beatSoundPanel.setLayout(null);
-
-		highBeatSelector = new MyComboBox();
-		highBeatSelector.setBounds(10, 114, 180, 20);
-		highBeatSelector.setSelectedItem(highSound.name());
-
-		lblHighBeat = new JLabel("High beat");
-		lblHighBeat.setHorizontalAlignment(SwingConstants.CENTER);
-		lblHighBeat.setForeground(textColour);
-		lblHighBeat.setBounds(10, 96, 180, 14);
-
-		lblLowBeat = new JLabel("Low beat");
-		lblLowBeat.setHorizontalAlignment(SwingConstants.CENTER);
-		lblLowBeat.setForeground(textColour);
-		lblLowBeat.setBounds(10, 282, 180, 14);
-
-		lowBeatSelector = new MyComboBox();
-		lowBeatSelector.setBounds(10, 298, 180, 20);
-		lowBeatSelector.setSelectedItem(lowSound.name());
-
-		beatSoundPanel.add(highBeatSelector);
-		beatSoundPanel.add(lblHighBeat);
-		beatSoundPanel.add(lblLowBeat);
-		beatSoundPanel.add(lowBeatSelector);
-
-		frmMetronome.getContentPane().add(beatSoundPanel);
-		frmMetronome.getContentPane().add(tglbtnBeatSound);
-		frmMetronome.getContentPane().add(btnTimerAdd);
-		frmMetronome.getContentPane().add(btnTimerSub);
-		frmMetronome.getContentPane().add(lblTimer);
-		frmMetronome.getContentPane().add(volSlider);
-		frmMetronome.getContentPane().add(beatsPanel);
-		frmMetronome.getContentPane().add(btnPlay);
-		frmMetronome.getContentPane().add(bpmLabel);
-		frmMetronome.getContentPane().add(bpmAdd);
-		frmMetronome.getContentPane().add(bpmSub);
-		frmMetronome.getContentPane().add(bpmTap);
-		frmMetronome.getContentPane().add(bpmSlider);
-		frmMetronome.getContentPane().add(measureSlider);
-		frmMetronome.getContentPane().add(lblVolume);
-		frmMetronome.getContentPane().add(lblBeats);
-
-		bpmAdd.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent arg0) {
-				setBpm(bpm + 1);
-			}
-		});
-		bpmSub.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent arg0) {
-				setBpm(bpm - 1);
-			}
-		});
-		bpmTap.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent arg0) {
-				TapTempo.tap();
-			}
-		});
-		btnPlay.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent arg0) {
-				if (isPlaying) {
-					pause();
-				} else {
-					play();
-				}
-			}
-		});
-		btnTimerAdd.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				if (isPlaying) pause();
-				timerValue += 15;
-				updateTimer(timerValue);
-			}
-		});
-		btnTimerSub.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				if (isPlaying) pause();
-
-				if (timerValue != 0) {
-					timerValue -= 15;
-					updateTimer(timerValue);
-				}
-			}
-		});
-
-		tglbtnBeatSound.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				isModifyingBeatSound = !isModifyingBeatSound;
-
-				if (isModifyingBeatSound) {
-					frmMetronome.setSize(700, 500);
-					beatSoundPanel.setVisible(true);
-					tglbtnBeatSound.setIcon(menuSelectedIcon);
-				} else {
-					frmMetronome.setSize(500, 500);
-					beatSoundPanel.setVisible(false);
-					tglbtnBeatSound.setIcon(menuIcon);
-				}
-			}
-		});
-
-		highBeatSelector.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				highSound = ClickSound.valueOf((String) highBeatSelector.getSelectedItem());
-			}
-		});
-
-		lowBeatSelector.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				lowSound = ClickSound.valueOf((String) lowBeatSelector.getSelectedItem());
-			}
-		});
-
-		bpmSlider.addChangeListener(new ChangeListener() {
-			public void stateChanged(ChangeEvent arg0) {
-				frmMetronome.repaint();
-				if (isPlaying) pause();
-
-				if (bpmSlider.getValue() == 0) {
-					setBpm(1);
-				} else {
-					setBpm(bpmSlider.getValue());
-				}
-			}
-		});
-		measureSlider.addChangeListener(new ChangeListener() {
-			public void stateChanged(ChangeEvent arg0) {
-				if (isPlaying) pause();
-
-				beatsPerMeasure = measureSlider.getValue();
-				setNumBeats(measureSlider.getValue());
-			}
-		});
 		volSlider.addChangeListener(new ChangeListener() {
 			public void stateChanged(ChangeEvent arg0) {
 				frmMetronome.repaint();
@@ -574,6 +520,41 @@ public class Metronome {
 				}
 			}
 		});
+
+		lblTimer = new JLabel("0:00");
+		lblTimer.setHorizontalAlignment(SwingConstants.CENTER);
+		lblTimer.setFont(new Font("Tahoma", Font.BOLD, 30));
+		lblTimer.setForeground(textColour);
+		lblTimer.setBounds(11, 190, 122, 54);
+
+		btnTimerSub = new MyButton();
+		btnTimerSub.setBounds(12, 241, 51, 29);
+		btnTimerSub.setIcon(subtractTimerIcon);
+		btnTimerSub.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				if (isPlaying) pause();
+
+				if (timerValue != 0) {
+					timerValue -= 15;
+					updateTimer(timerValue);
+				}
+			}
+		});
+
+		btnTimerAdd = new MyButton();
+		btnTimerAdd.setBounds(81, 241, 51, 29);
+		btnTimerAdd.setIcon(plusTimerIcon);
+		btnTimerAdd.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				if (isPlaying) pause();
+				timerValue += 15;
+				updateTimer(timerValue);
+			}
+		});
+
+		lblVolume = new JLabel();
+		lblVolume.setBounds(379, 377, 32, 32);
+		lblVolume.setIcon(softVolIcon);
 		lblVolume.addMouseListener(new MouseListener() {
 
 			@Override
@@ -599,6 +580,10 @@ public class Metronome {
 			}
 
 		});
+
+		lblBeats = new JLabel();
+		lblBeats.setBounds(428, 377, 32, 32);
+		lblBeats.setIcon(beatsIcon);
 		lblBeats.addMouseListener(new MouseListener() {
 
 			@Override
@@ -624,6 +609,216 @@ public class Metronome {
 			}
 
 		});
+
+		// Beat Sound Modifier Panel
+
+		tglbtnBeatSound = new JToggleButton();
+		tglbtnBeatSound.setBorderPainted(false);
+		tglbtnBeatSound.setBounds(7, 10, 40, 34);
+		tglbtnBeatSound.setOpaque(false);
+		tglbtnBeatSound.setIcon(menuIcon);
+		tglbtnBeatSound.setFocusable(false);
+		tglbtnBeatSound.setContentAreaFilled(false);
+		tglbtnBeatSound.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		tglbtnBeatSound.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				isModifyingBeatSound = !isModifyingBeatSound;
+
+				if (isModifyingBeatSound) {
+					frmMetronome.setSize(700, 500);
+					extensionPanel.setVisible(true);
+					tglbtnBeatSound.setIcon(menuSelectedIcon);
+				} else {
+					frmMetronome.setSize(500, 500);
+					extensionPanel.setVisible(false);
+					tglbtnBeatSound.setIcon(menuIcon);
+				}
+			}
+		});
+
+		extensionPanel = new JPanel();
+		extensionPanel.setBorder(new MatteBorder(0, 2, 0, 0, Color.LIGHT_GRAY));
+		extensionPanel.setBackground(frmMetronomeColour);
+		extensionPanel.setBounds(485, 0, 200, 461);
+		extensionPanel.setLayout(null);
+		extensionPanel.setVisible(false);
+
+		highBeatSelector = new MyComboBox();
+		highBeatSelector.setBounds(10, 70, 180, 20);
+		highBeatSelector.setSelectedItem(highSound.name());
+		highBeatSelector.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				highSound = ClickSound.valueOf((String) highBeatSelector.getSelectedItem());
+			}
+		});
+
+		lblHighBeat = new JLabel("High beat");
+		lblHighBeat.setHorizontalAlignment(SwingConstants.CENTER);
+		lblHighBeat.setForeground(textColour);
+		lblHighBeat.setBounds(10, 50, 180, 14);
+
+		lblLowBeat = new JLabel("Low beat");
+		lblLowBeat.setHorizontalAlignment(SwingConstants.CENTER);
+		lblLowBeat.setForeground(textColour);
+		lblLowBeat.setBounds(10, 200, 180, 14);
+
+		lowBeatSelector = new MyComboBox();
+		lowBeatSelector.setBounds(10, 220, 180, 20);
+		lowBeatSelector.setSelectedItem(lowSound.name());
+		lowBeatSelector.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				lowSound = ClickSound.valueOf((String) lowBeatSelector.getSelectedItem());
+			}
+		});
+
+		indvBeatSoundPanel = new JPanel();
+		indvBeatSoundPanel.setOpaque(false);
+		indvBeatSoundPanel.setVisible(false);
+		indvBeatSoundPanel.setBounds(0, 87, 200, 374);
+		indvBeatSoundPanel.setLayout(new BoxLayout(indvBeatSoundPanel, BoxLayout.Y_AXIS));
+
+		highLowBeatSoundPanel = new JPanel();
+		highLowBeatSoundPanel.setOpaque(false);
+		highLowBeatSoundPanel.setBounds(0, 87, 200, 374);
+		highLowBeatSoundPanel.setLayout(null);
+
+		tglbtnIndvBeats = new JToggleButton("Change individual beats");
+		tglbtnIndvBeats.setBounds(10, 11, 180, 32);
+		tglbtnIndvBeats.setBorder(new MatteBorder(2, 2, 2, 2, Color.LIGHT_GRAY));
+		tglbtnIndvBeats.setOpaque(false);
+		tglbtnIndvBeats.setFocusable(false);
+		tglbtnIndvBeats.setContentAreaFilled(false);
+		tglbtnIndvBeats.setForeground(textColour);
+		tglbtnIndvBeats.setBackground(frmMetronomeColour.brighter().brighter().brighter());
+		tglbtnIndvBeats.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		tglbtnIndvBeats.addMouseListener(new MouseListener() {
+
+			@Override
+			public void mouseClicked(MouseEvent arg0) {
+			}
+
+			@Override
+			public void mouseEntered(MouseEvent arg0) {
+				if (!isIndivBeats) {
+					tglbtnIndvBeats.setBorder(new MatteBorder(2, 2, 2, 2, Color.GRAY));
+				}
+			}
+
+			@Override
+			public void mouseExited(MouseEvent arg0) {
+				if (!isIndivBeats) {
+					tglbtnIndvBeats.setBorder(new MatteBorder(2, 2, 2, 2, Color.LIGHT_GRAY));
+				}
+			}
+
+			@Override
+			public void mousePressed(MouseEvent arg0) {
+			}
+
+			@Override
+			public void mouseReleased(MouseEvent arg0) {
+			}
+
+		});
+		tglbtnIndvBeats.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				isIndivBeats = !isIndivBeats;
+
+				if (isIndivBeats) {
+					tglbtnIndvBeats.setBorder(new MatteBorder(2, 2, 2, 2, Color.GRAY));
+					tglbtnIndvBeats.setOpaque(true);
+					highLowBeatSoundPanel.setVisible(false);
+					indvBeatSoundPanel.setVisible(true);
+
+					layoutBeatSounds(beatsPerMeasure);
+				} else {
+					tglbtnIndvBeats.setOpaque(false);
+					highLowBeatSoundPanel.setVisible(true);
+					indvBeatSoundPanel.setVisible(false);
+				}
+			}
+		});
+
+		tglbtnExtendBPM = new JToggleButton("Extend BPM Range");
+		tglbtnExtendBPM.setOpaque(false);
+		tglbtnExtendBPM.setForeground(new Color(148, 210, 189));
+		tglbtnExtendBPM.setFocusable(false);
+		tglbtnExtendBPM.setContentAreaFilled(false);
+		tglbtnExtendBPM.setBorder(new MatteBorder(2, 2, 2, 2, Color.LIGHT_GRAY));
+		tglbtnExtendBPM.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		tglbtnExtendBPM.setBackground(frmMetronomeColour.brighter().brighter().brighter());
+		tglbtnExtendBPM.setBounds(10, 54, 180, 32);
+		tglbtnExtendBPM.addMouseListener(new MouseListener() {
+
+			@Override
+			public void mouseClicked(MouseEvent arg0) {
+			}
+
+			@Override
+			public void mouseEntered(MouseEvent arg0) {
+				if (maxBPM == MAX_BPM) {
+					tglbtnExtendBPM.setBorder(new MatteBorder(2, 2, 2, 2, Color.GRAY));
+				}
+			}
+
+			@Override
+			public void mouseExited(MouseEvent arg0) {
+				if (maxBPM == MAX_BPM) {
+					tglbtnExtendBPM.setBorder(new MatteBorder(2, 2, 2, 2, Color.LIGHT_GRAY));
+				}
+			}
+
+			@Override
+			public void mousePressed(MouseEvent arg0) {
+			}
+
+			@Override
+			public void mouseReleased(MouseEvent arg0) {
+			}
+
+		});
+		tglbtnExtendBPM.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				if (isPlaying) pause();
+
+				maxBPM = maxBPM == MAX_BPM ? EXTENDED_BPM : MAX_BPM;
+				bpmSlider.setMaximum(maxBPM);
+
+				if (maxBPM == MAX_BPM) {
+					tglbtnExtendBPM.setOpaque(false);
+				} else {
+					tglbtnExtendBPM.setOpaque(true);
+				}
+			}
+		});
+
+		highLowBeatSoundPanel.add(lowBeatSelector);
+		highLowBeatSoundPanel.add(highBeatSelector);
+		highLowBeatSoundPanel.add(lblHighBeat);
+		highLowBeatSoundPanel.add(lblLowBeat);
+
+		extensionPanel.add(tglbtnIndvBeats);
+		extensionPanel.add(tglbtnExtendBPM);
+		extensionPanel.add(indvBeatSoundPanel);
+		extensionPanel.add(highLowBeatSoundPanel);
+
+		frmMetronome.getContentPane().add(extensionPanel);
+		frmMetronome.getContentPane().add(tglbtnBeatSound);
+		frmMetronome.getContentPane().add(btnTimerAdd);
+		frmMetronome.getContentPane().add(btnTimerSub);
+		frmMetronome.getContentPane().add(lblTimer);
+		frmMetronome.getContentPane().add(volSlider);
+		frmMetronome.getContentPane().add(beatsPanel);
+		frmMetronome.getContentPane().add(btnPlay);
+		frmMetronome.getContentPane().add(bpmLabel);
+		frmMetronome.getContentPane().add(bpmAdd);
+		frmMetronome.getContentPane().add(bpmSub);
+		frmMetronome.getContentPane().add(bpmTap);
+		frmMetronome.getContentPane().add(bpmSlider);
+		frmMetronome.getContentPane().add(measureSlider);
+		frmMetronome.getContentPane().add(lblVolume);
+		frmMetronome.getContentPane().add(lblBeats);
 	}
 
 	public static class MySlider extends JSlider {
@@ -692,6 +887,7 @@ public class Metronome {
 			setOpaque(false);
 			setFocusable(false);
 			setContentAreaFilled(false);
+			setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 			addMouseListener(new MouseListener() {
 
 				@Override
@@ -719,10 +915,11 @@ public class Metronome {
 			});
 		}
 	}
-	
+
 	public static class MyComboBox extends JComboBox<String> {
 		private static final long serialVersionUID = -2502900049691909854L;
-		
+		private int id = 0;
+
 		public MyComboBox() {
 			setFocusable(false);
 			setModel(new DefaultComboBoxModel<String>(ClickSound.getNames()));
@@ -732,7 +929,7 @@ public class Metronome {
 				// https://stackoverflow.com/questions/64541587/lookandfeel-blocking-jcombobox-background-change
 
 				private static final long serialVersionUID = 5382877703364914637L;
-				
+
 				@Override
 				public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
 
@@ -745,6 +942,14 @@ public class Metronome {
 					return comp;
 				}
 			});
+		}
+
+		public int getID() {
+			return id;
+		}
+
+		public void setID(int id) {
+			this.id = id;
 		}
 	}
 }
