@@ -1,40 +1,37 @@
 import java.net.URL;
 import java.util.Vector;
 
-import audiocue.AudioCue;
+import kuusisto.tinysound.*;
 
-public class AudioHandler
-{
-	private static Vector<AudioCue> audioCueList = new Vector<AudioCue>();
+public class AudioHandler {
+	private static Vector<Sound> soundList = new Vector<Sound>();
 	private static double volume = 0.5;
-	
-	public static void init()
-	{
-		for (ClickSound clickSound : ClickSound.values())
-		{
-			try
-	    	{
-				URL url = AudioHandler.class.getClassLoader().getResource(clickSound.getFileName());
-				
-				AudioCue audioCue = AudioCue.makeStereoCue(url, 3);
-				audioCue.open();
 
-				audioCueList.add(audioCue);
+	public static void init() {
+		TinySound.init();
+
+		for (ClickSound clickSound : ClickSound.values()) {
+			try {
+				URL url = AudioHandler.class.getClassLoader().getResource(clickSound.getFileName());
+				Sound sound = TinySound.loadSound(url);
+				soundList.add(sound);
 			}
-			catch (Exception e)
-	    	{
-	    		e.printStackTrace();
-	    	}
+			catch (Exception e) {
+				e.printStackTrace();
+			}
 		}
 	}
-	
-	public static void play(int id)
-	{
-		audioCueList.elementAt(id).play(volume);
+
+	public static void play(int id) {
+		soundList.elementAt(id).play(volume);
+	}
+
+	public static void setVolume(double vol) {
+		volume = vol;
 	}
 	
-	public static void setVolume(double vol)
-	{
-		volume = vol;
+	//TODO: invoke this method when metronome window is closed
+	public static void close() {
+		TinySound.shutdown();
 	}
 }
