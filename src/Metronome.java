@@ -12,6 +12,8 @@ import javax.swing.JButton;
 import javax.swing.event.ChangeListener;
 import javax.swing.event.ChangeEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
@@ -404,6 +406,27 @@ public class Metronome {
 		frmMetronome.getContentPane().setLayout(null);
 		frmMetronome.getContentPane().setBackground(frmMetronomeColour);
 		frmMetronome.setResizable(false);
+		frmMetronome.addKeyListener(new KeyListener() {
+
+			@Override
+			public void keyPressed(KeyEvent arg0) {
+				if (arg0.getKeyCode() == KeyEvent.VK_SPACE) {
+					if (isPlaying) {
+						pause();
+					} else {
+						play();
+					}
+				}
+			}
+
+			@Override
+			public void keyReleased(KeyEvent arg0) {
+			}
+
+			@Override
+			public void keyTyped(KeyEvent arg0) {
+			}
+		});
 
 		measureSlider = new MySlider();
 		measureSlider.setVisible(false);
